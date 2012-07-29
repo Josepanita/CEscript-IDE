@@ -33,6 +33,7 @@ class Window():
 		self.bin = "%scescript" % (self.wd)
 		self.file = "-i"
 		self.h = 400
+		self.w = 600
 		self.io = InOut()
 		self.modified = False
 	
@@ -69,7 +70,7 @@ class Window():
 	def create_main_window(self):
 		self.window = gtk.Window()
 		self.window.set_property("allow-shrink", True)
-		self.window.set_default_size(-1, self.h)
+		self.window.set_default_size(self.w, self.h)
 		self.window.connect('delete-event', gtk.main_quit)
 		self.window.connect("destroy", lambda w: gtk.main_quit())
 		self.window.set_title("CEscript IDE")
@@ -77,13 +78,20 @@ class Window():
 	def create_console(self):
 		self.terminal = vte.Terminal()
 		self.terminal.fork_command("%s" % (self.bin), ["", self.file])
+		# here you can set backscroll buffer
+		self.terminal.set_scrollback_lines(5000)
+		# encoding for console
+		self.terminal.set_encoding("UTF-8")
+		
+		self.terminal.set_scroll_on_keystroke(True)
+
 		return self.terminal
 
 	def modify(self, boo):
 		self.modified = boo
 
 	def create_editor(self):
-		frame1 = gtk.Frame("Editor")
+		frame = gtk.Frame("Editor")
 		vbox = gtk.VBox(False, 5)
 
 		scrwdw = gtk.ScrolledWindow()
@@ -96,6 +104,7 @@ class Window():
 
 		self.textview = gtk.TextView(buff)
 		self.buf = self.textview.get_buffer()
+		
 		self.buf.connect("changed", lambda x: self.modify(True))
 
 		self.buf.set_text("")
@@ -103,8 +112,8 @@ class Window():
 
 		self.textview.set_wrap_mode(gtk.WRAP_WORD)
 		
-		vbox.pack_start(frame1, True, True, 0)
-		frame1.add(scrwdw)
+		vbox.pack_start(frame, True, True, 0)
+		frame.add(scrwdw)
 		scrwdw.add(self.textview)
 
 		self.textview.set_editable(True)
@@ -117,7 +126,7 @@ class Window():
 		self.vpaned = gtk.VPaned()
 		return self.vpaned
 
-	def abrir(self, icon):
+	def abrir(self, icon=None):
 		dialog = gtk.FileChooserDialog("Abrir..",
 							   None,
 							   gtk.FILE_CHOOSER_ACTION_OPEN,
@@ -285,6 +294,9 @@ class Window():
 			if keyval_name(event.keyval) == "n":
 				self.nuevo()
 				return True
+			if keyval_name(event.keyval) == "o":
+				self.abrir()
+				return True
 			elif keyval_name(event.keyval) == "s":
 				self.guardar()
 				return True
@@ -314,10 +326,19 @@ class Window():
 		self.editor = self.create_editor()
 		self.teminal = self.create_console()
 
+		frame = gtk.Frame("Consola")
+		scrwdw = gtk.ScrolledWindow()
+		scrwdw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+
+		scrwdw.add(self.terminal)
+		frame.add(scrwdw)
+		frame.set_size_request(-1,200)
+		
+
 		self.table.attach(self.menus,0,2,0,1)
 		self.table.attach(self.toolbar,0,2,1,2)
 		self.table.attach(self.editor,0,2,2,3)
-		self.table.attach(self.terminal,0,2,3,4)
+		self.table.attach(frame,0,2,3,4)
 
 		self.window.show_all()
 		gtk.main()
