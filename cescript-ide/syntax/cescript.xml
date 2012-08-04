@@ -44,7 +44,6 @@
 		<keyword>omision</keyword>
 		<keyword>hacer</keyword>
 		<keyword>sino</keyword>
-		<keyword>if</keyword>
 		<keyword>ir</keyword>
 		<keyword>si</keyword>
 		<keyword>devuelve</keyword>
@@ -119,9 +118,6 @@
 		<keyword>#define</keyword>
 		<keyword>#endif</keyword>
 		<keyword>#undef</keyword>
-		<keyword>#error</keyword>
-		<keyword>#pragma</keyword>
-		<keyword>#line</keyword>
 		<keyword>#sino</keyword>
 		<keyword>#finsi</keyword>
 		<keyword>#si</keyword>

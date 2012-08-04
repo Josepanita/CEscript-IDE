@@ -1,200 +1,260 @@
 #!/usr/bin/env python
 
 import os, gtk, gobject, glib, vte, pango
-from syntax import  CodeBuffer, SyntaxLoader
+import gtksourceview2 as code
+from gtk.gdk import CONTROL_MASK, keyval_name
 
-class InOut():
+LANGUAGE = "cescript"
+THIS = os.path.abspath(os.path.dirname(__file__))
+LANG_PATH = os.path.join(THIS, "../syntax/")
+STYLE_PATH = os.path.join(THIS, "../style/")
+STYLE = "classic"
+FORMAT = "*.pc"
+NAME = "CEscript IDE"
 
-	def open(self, file):
+class Script():
+	def set_lang(self, buffer):
+		lang_manager = code.language_manager_get_default()
+		language = lang_manager.get_language(LANGUAGE)
+
+		mgr = code.style_scheme_manager_get_default()
+		scheme = mgr.get_scheme(STYLE)
 		
-		try:
-			f = open(file, "rw")
-			self.temp = False
-			return f.read()
-		except IOError:
-			pass
-		finally:
-			f.close()
+		buffer.set_language(language)
+		buffer.set_highlight_syntax(True)
+		buffer.set_style_scheme(scheme)
 
-	def save(self, file, text):
-		f = open(file, "w")
+
+	def fload(self, buffer, path):
+		buffer.begin_not_undoable_action()
 		try:
-		    f.write(text)
+			txt = open(path).read()
+		except:
+			return False
+		buffer.set_text(txt)
+		buffer.set_data('filename', path)
+		buffer.end_not_undoable_action()
+		buffer.set_modified(False)
+
+		begin, end = buffer.get_bounds()
+		buffer.place_cursor(begin)
+		marks = buffer.remove_source_marks(begin, end)
+		return True
+		
+	def fopen(self, buffer, filename):
+
+		if os.path.isabs(filename):
+			path = filename
+		else:
+			path = os.path.abspath(filename)
+
+		self.set_lang(buffer)
+		
+		return self.fload(buffer, path) # TODO: check return
+
+	def fsave(self, buffer, path=None):
+		start, end = buffer.get_bounds()
+		text = buffer.get_text(start, end, include_hidden_chars=True)
+			
+		if path:
+			file = path
+		else:
+			file = buffer.get_data('filename')
+		try:
+			f = open(file, "w")
+			f.write(text)
+		except IOError:
+			return False
 		finally:
 		    f.close()
-		
+		return True
 
-class Window():
-	"""IDE para CEscript"""
-	
-	def __init__(self):
+	def open(self, buffer):
+		chooser = gtk.FileChooserDialog('Abrir...', None,
+									gtk.FILE_CHOOSER_ACTION_OPEN,
+									(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+									gtk.STOCK_OPEN, gtk.RESPONSE_OK))
 
-		self.wd = "../";
-		self.bin = "%scescript" % (self.wd)
-		self.file = "-i"
-		self.h = 400
-		self.w = 600
-		self.io = InOut()
-		self.modified = False
-	
-	def create_menus(self):
-		self.mb = gtk.MenuBar()
-
-		filemenu = gtk.Menu()
-		filem = gtk.MenuItem("Archivo")
-		filem.set_submenu(filemenu)
-       
-		nuevo = gtk.MenuItem("Nuevo")
-		nuevo.connect("activate", self.nuevo)
-		filemenu.append(nuevo)
-
-		abrir = gtk.MenuItem("Abrir")
-		abrir.connect("activate", self.abrir)
-		filemenu.append(abrir)
-
-		guardar = gtk.MenuItem("Guardar")
-		guardar.connect("activate", self.guardar)
-		filemenu.append(guardar)
-
-		guardarc = gtk.MenuItem("Guardar como...")
-		guardarc.connect("activate", self.save_as)
-		filemenu.append(guardarc)
-
-		exit = gtk.MenuItem("Salir")
-		exit.connect("activate", gtk.main_quit)
-		filemenu.append(exit)
-
-		self.mb.append(filem)
-		return self.mb
-
-	def create_main_window(self):
-		self.window = gtk.Window()
-		self.window.set_property("allow-shrink", True)
-		self.window.set_default_size(self.w, self.h)
-		self.window.connect('delete-event', gtk.main_quit)
-		self.window.connect("destroy", lambda w: gtk.main_quit())
-		self.window.set_title("CEscript IDE")
-
-	def create_console(self):
-		self.terminal = vte.Terminal()
-		self.terminal.fork_command("%s" % (self.bin), ["", self.file])
-		# here you can set backscroll buffer
-		self.terminal.set_scrollback_lines(5000)
-		# encoding for console
-		self.terminal.set_encoding("UTF-8")
-		
-		self.terminal.set_scroll_on_keystroke(True)
-
-		return self.terminal
-
-	def modify(self, boo):
-		self.modified = boo
-
-	def create_editor(self):
-		frame = gtk.Frame("Editor")
-		vbox = gtk.VBox(False, 5)
-
-		scrwdw = gtk.ScrolledWindow()
-		scrwdw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-		
-		this = os.path.abspath(os.path.dirname(__file__))
-		
-		lang = SyntaxLoader(os.path.join(this, "syntax/cescript"))
-		buff = CodeBuffer(lang=lang)
-
-		self.textview = gtk.TextView(buff)
-		self.buf = self.textview.get_buffer()
-		
-		self.buf.connect("changed", lambda x: self.modify(True))
-
-		self.buf.set_text("")
-		self.temp = True
-
-		self.textview.set_wrap_mode(gtk.WRAP_WORD)
-		
-		vbox.pack_start(frame, True, True, 0)
-		frame.add(scrwdw)
-		scrwdw.add(self.textview)
-
-		self.textview.set_editable(True)
-		self.textview.set_cursor_visible(True)
-		self.textview.set_size_request(-1, int(self.h/2.5))
-
-		return vbox
-	
-	def create_panned_view(self):
-		self.vpaned = gtk.VPaned()
-		return self.vpaned
-
-	def abrir(self, icon=None):
-		dialog = gtk.FileChooserDialog("Abrir..",
-							   None,
-							   gtk.FILE_CHOOSER_ACTION_OPEN,
-							   (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
-								gtk.STOCK_OPEN, gtk.RESPONSE_OK))
-		dialog.set_default_response(gtk.RESPONSE_OK)
+		chooser.set_default_response(gtk.RESPONSE_OK)
 
 		filter = gtk.FileFilter()
-		filter.set_name("Scripts")
-		filter.add_pattern("*.c")
-		filter.add_pattern("*.pc")
-		dialog.add_filter(filter)
+		filter.set_name("Programa CEscript")
+		filter.add_pattern(FORMAT)
+		chooser.add_filter(filter)
 
-		filter = gtk.FileFilter()
-		filter.set_name("Todos los archivos")
-		filter.add_pattern("*")
-		dialog.add_filter(filter)
+		response = chooser.run()
 
-		
-
-		response = dialog.run()
 		if response == gtk.RESPONSE_OK:
-			self.file = dialog.get_filename()
-			self.buf.set_text(self.io.open(self.file))
-			self.modified = False
-			self.temp = False
-		dialog.destroy()
+			filename = chooser.get_filename()
+			chooser.destroy()
+			if filename:
+				return self.fopen(buffer, filename)
+		else:
+			chooser.destroy()
 
-	def save_dialog(self):
-		dialog = gtk.FileChooserDialog("Guardar..",
+	def save(self, buffer, just=False):
+		chooser = gtk.FileChooserDialog("Guardar..",
 							   None,
 							   gtk.FILE_CHOOSER_ACTION_SAVE,
 							   (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
 								gtk.STOCK_OPEN, gtk.RESPONSE_OK)
 							   )
 		
-		dialog.set_default_response(gtk.RESPONSE_OK)
+		chooser.set_default_response(gtk.RESPONSE_OK)
 
 		filter = gtk.FileFilter()
 		filter.set_name("Programa CEscript")
-		filter.add_pattern("*.pc")
-		dialog.add_filter(filter)
+		filter.add_pattern(FORMAT)
+		chooser.add_filter(filter)
 
 		filter = gtk.FileFilter()
 		filter.set_name("Todos los archivos")
 		filter.add_pattern("*.*")
-		dialog.add_filter(filter)
+		chooser.add_filter(filter)
 
-		response = dialog.run()
+		response = chooser.run()
+		chooser.destroy()
 		if response == gtk.RESPONSE_OK:
-			start, end = self.buf.get_bounds()
-			text = self.buf.get_text(start, end, include_hidden_chars=True)
+			return self.fsave(buffer)
+		else:
+			return False
+
+class Window():
+	"""IDE para CEscript"""
+
+	def factory_menus(self):
+		menu_items = (
+			( "/Archivo",		 None,		 None, 0, "<Branch>" ),
+			( "/Archivo/_Nuevo",	 "<control>N", self.nuevo, 0, "<StockItem>", gtk.STOCK_NEW ),
+			( "/Archivo/sep1",	 None,		 None, 0, "<Separator>" ),
+			( "/Archivo/_Abrir",	"<control>O", self.abrir, 0, "<StockItem>", gtk.STOCK_OPEN  ),
+			( "/Archivo/Guardar",	"<control>S", self.guardar, 0, "<StockItem>", gtk.STOCK_SAVE ),
+			( "/Archivo/Guardar Como...", "<control><shift>S", self.guardar, 1, None, gtk.STOCK_SAVE_AS ),
+			( "/Archivo/sep2",	 None,		 None, 0, "<Separator>" ),
 			
-			self.file = dialog.get_filename()
-			self.io.save(self.file, text)
-			self.buf.set_text(self.io.open(self.file))
-			self.modified = False
-		dialog.destroy()
+			( "/Archivo/sep3",	 None,		 None, 0, "<Separator>" ),
+			( "/Archivo/Salir",	 "<control>Q", gtk.main_quit, 0, "<StockItem>", gtk.STOCK_QUIT ),
+			( "/Terminal",	  None,		 None, 0, "<Branch>" ),
+			( "/Terminal/Compilar",	"<control>B", self.compile, 0, "<StockItem>", gtk.STOCK_EXECUTE ),
+			( "/Terminal/Cambiar a Interactivo",	"<control>I", self.compile, 1, "<StockItem>", gtk.STOCK_INFO),
+			( "/_Opciones",	  None,		 None, 0, "<Branch>" ),
+			( "/Opciones/Numeros de Linea",  None, self.toggle_cb, 0, "<ToggleItem>" ),
+			( "/Opciones/Mostrar margen",  None, self.toggle_cb, 1, "<ToggleItem>" ),
+			( "/Opciones/Auto Identacion",  None, self.toggle_cb, 2, "<ToggleItem>" ),
+			( "/Opciones/Insertar espacios en vez de tabulacion",  None, self.toggle_cb, 3, "<ToggleItem>" ),
+			# ( "/Opciones/Ancho de tabulacion",		 None,		 None, 0, "<Branch>" ),
+			# ( "/Opciones/Ancho de tabulacion/2",		 None,		 self.toggle_cb, 4, "<RadioItem>" ),
+			# ( "/Opciones/Ancho de tabulacion/4",		 None,		 self.toggle_cb, 5, "/Opciones/Ancho de tabulacion/2" ),
+			# ( "/Opciones/Ancho de tabulacion/6",		 None,		 self.toggle_cb, 6, "/Opciones/Ancho de tabulacion/2" ),
+			# ( "/Opciones/Ancho de tabulacion/8",		 None,		 self.toggle_cb, 7, "/Opciones/Ancho de tabulacion/2" ),
+			( "/_Help",		 None,		 None, 0, "<LastBranch>" ),
+			( "/_Help/About",   None,		 None, 0, None ),
+			)
+
+		accel_group = gtk.AccelGroup()
+		item_factory = gtk.ItemFactory(gtk.MenuBar, "<main>", accel_group)
+		item_factory.create_items(menu_items)
+		self.window.add_accel_group(accel_group)
+		
+		self.item_factory = item_factory
+
+		menu = item_factory.get_widget("<main>")
+		return menu
+	
+	###########################
+	######## CALLBACKS ########
+	###########################
+
+	def toggle_cb(self, action, widget):
+		if action == 0:
+			self.toggle_numbers(widget, self.textview)
+		elif action == 1:
+			self.toggle_margin(widget, self.textview)
+		elif action == 2:
+			self.toggle_indent(widget, self.textview)
+		elif action == 3:
+			self.toggle_tabs(widget, self.textview)
+		else:
+			width = ( (action % 4) * 2 ) + 2
+			print widget
+			self.tab_width(widget, self.textview, width)
+
+	def toggle_numbers(self, widget, textview):
+		textview.set_show_line_numbers(widget.get_active())
+
+	def toggle_marks(self, widget, textview):
+		textview.set_show_line_marks(widget.get_active())
+
+	def toggle_margin(self, widget, textview):
+		textview.set_show_right_margin(widget.get_active())
+
+	def toggle_indent(self, widget, textview):
+		textview.set_auto_indent(widget.get_active())
+
+	def toggle_tabs(self, widget, textview):
+		textview.set_insert_spaces_instead_of_tabs(widget.get_active())
+
+	def tab_width(self, widget, textview, width):
+		textview.set_tab_width(width)
+
+	def quit(self, action=None, widget=None):
+		
+		if self.buf.get_modified():
+			conf = self.confirm_close()
+			if conf:
+				gtk.main_quit()
+		else:
+			gtk.main_quit()
+
+	def nuevo(self, action=None, widget=None):
+		if self.buf.get_modified():
+			self.confirm_new()
+		else:
+			self.buf.set_text("")
+			self.temp = True
+
+	def guardar(self, action=None, widget=None, just_save=False):
+
+		if self.temp or action:
+			if action:
+				just_save = True
+			saved = Script().save(self.buf, just_save)
+		else:
+			saved = Script().fsave(self.buf)
+
+		if saved:
+			self.temp = False
+
+		return saved
+
+	def compile(self, action=None, widget=None):
+		if action == 1:
+			self.file = "-i"
+		else:
+			if not self.guardar(0, None, False):
+				return False
+			self.file = self.buf.get_data("filename")
+
+		self.terminal.reset(True,True)
+		self.terminal.fork_command("%s" % (self.bin), ["", self.file])
+		self.terminal.grab_focus()
+	
+
+	def abrir(self, action=None, widget=None):
+
+		if not widget:
+			widget = action
+
+		open = Script().open(self.buf)
+		self.temp = False
 
 	def confirm_new(self):
 		messagedialog = gtk.MessageDialog(self.window, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO, "Aun hay cambios sin guardar, si crea un nuevo archivo se perderan los cambios.\nDesea crear un archivo nuevo?")
 		response = messagedialog.run()
-		
-		if response == gtk.RESPONSE_YES:
-			self.modified = False
-			self.nuevo()
-
 		messagedialog.destroy()
+		if response == gtk.RESPONSE_YES:
+			self.buf.set_modified(False)
+			self.nuevo()
 
 	def confirm_close(self):
 		messagedialog = gtk.MessageDialog(self.window, gtk.DIALOG_MODAL, gtk.MESSAGE_WARNING, gtk.BUTTONS_YES_NO, "Aun hay cambios sin guardar, si crea un nuevo archivo se perderan los cambios.\nDesea salir?")
@@ -206,123 +266,152 @@ class Window():
 		else:
 			return False
 
-	def quit(self):
-		if self.modified:
-			conf = self.confirm_close()
-			if conf:
-				gtk.main_quit()
-		else:
-			gtk.main_quit()
-
-
-	def nuevo(self, e=None):
-		if self.modified:
-			self.confirm_new()
-		else:
-			self.buf.set_text("")
-			self.temp = True
-
-	def guardar(self, e=None):
-		if self.temp:
-			self.save_dialog()
-			self.modified = False
-			self.temp = False
-		else:
-			start, end = self.buf.get_bounds()
-			text = self.buf.get_text(start, end, include_hidden_chars=True)
-			self.io.save(self.file, text)
-			self.modified = False
-			self.temp = False
-
-	def save_as(self, e=None):
+	def key_press_event_cb(self, widget, event):
 		
-		self.save_dialog()
-		self.modified = False
-		self.temp = False
-		
-	def compile(self, e=None):
-		self.guardar()
-		self.terminal.reset(True,True)
-		self.terminal.fork_command("%s" % (self.bin), ["", self.file])
-	
-	def interactive(self, e=None):
+		if event.state & CONTROL_MASK:
+
+			if keyval_name(event.keyval) == "m":
+
+				iter = self.buf.get_iter_at_mark(self.buf.get_insert())
+				mark = code.Mark("Test", "lorem")
+				self.buf.add_mark(mark, iter)
+
+				return True
+				
+			return False
+
+	def get_defaults(self):
+		self.item_factory.get_item("/Opciones/Numeros de Linea").set_active(self.textview.get_show_line_numbers())
+		self.item_factory.get_item("/Opciones/Mostrar margen").set_active(self.textview.get_show_right_margin())
+		self.item_factory.get_item("/Opciones/Auto Identacion").set_active(self.textview.get_auto_indent())
+		self.item_factory.get_item("/Opciones/Insertar espacios en vez de tabulacion").set_active(self.textview.get_insert_spaces_instead_of_tabs())
+		self.textview.set_tab_width(4)
+
+	def update_cursor_position(self, buffer, view):
+		iter = buffer.get_iter_at_mark(buffer.get_insert())
+		li=iter.get_line_index()
+		nchars = iter.get_offset()
+		row = iter.get_line() + 1
+
+		self.status.push(1, "Linea: %d | Caracter: %d" % (row, li))
+
+	def move_cursor_cb (self, buffer, cursoriter, mark, view):
+		self.update_cursor_position(buffer, view)
+
+	def __init__(self):
+
+		self.wd = "./bin/";
+		self.bin = "%scescript" % (self.wd)
+
 		self.file = "-i"
-		self.terminal.reset(True,True)
+		self.h = 400
+		self.w = 700
+		self.modified = False
+
+		lang_manager = code.language_manager_get_default()
+		path = lang_manager.get_search_path()
+		path.append(LANG_PATH)
+		lang_manager.set_search_path(path)
+
+		mgr = code.style_scheme_manager_get_default()
+		path = mgr.get_search_path()
+		path.append(STYLE_PATH)
+		mgr.set_search_path(path)
+
+	def create_main_window(self):
+		self.window = gtk.Window()
+		self.window.set_property("allow-shrink", True)
+		self.window.set_default_size(self.w, self.h)
+		self.window.connect('delete-event', self.quit)
+		self.window.set_title("CEscript IDE")
+
+	def create_console(self):
+		self.terminal = vte.Terminal()
 		self.terminal.fork_command("%s" % (self.bin), ["", self.file])
+		self.terminal.set_encoding("UTF-8")
+
+		return self.terminal
+
+	def create_editor(self):
+		frame = gtk.Frame("Editor")
+		vbox = gtk.VBox(False, 5)
+		frame.set_border_width(5)
+		scrwdw = gtk.ScrolledWindow()
+		scrwdw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 		
+		buffer = code.Buffer()
+		
+		textview = code.View(buffer)
+		textview.set_show_line_numbers(True)
+		textview.set_auto_indent(True)
+		textview.set_insert_spaces_instead_of_tabs(True)
+		textview.set_show_line_marks(True)
+		textview.set_highlight_current_line(True)
+		textview.set_wrap_mode(gtk.WRAP_WORD)
+		textview.set_editable(True)
+		textview.set_cursor_visible(True)
+		textview.set_size_request(-1, int(self.h/2.5))
+		textview.set_border_width(10)
+		#textview.set_property("draw-spaces", (1<<1) | (1<<2))
+
+		Script().set_lang(buffer)
+
+		self.textview = textview
+
+		buffer.connect('mark-set', self.move_cursor_cb, self.textview)
+		buffer.connect('changed', self.update_cursor_position, self.textview)
+		
+		self.buf = buffer
+		self.temp = True
+		
+		vbox.pack_start(frame, True, True, 0)
+		frame.add(scrwdw)
+		scrwdw.add(self.textview)
+
+		return vbox
+	
+	def create_panned_view(self):
+		self.vpaned = gtk.VPaned()
+		return self.vpaned
+	
 	def crear_toolbar(self):
 		handle = gtk.HandleBox()
 
 		toolbar = gtk.Toolbar()
 		toolbar.set_size_request(200, 40)
 		
-		toolbutton1 = gtk.ToolButton(gtk.STOCK_NEW)
-		toolbutton1.set_tooltip_text("Nuevo")
-		toolbutton1.connect("clicked", self.nuevo)
-
-		toolbutton2 = gtk.ToolButton(gtk.STOCK_OPEN)
-		toolbutton2.set_tooltip_text("Abrir")
-		toolbutton2.connect("clicked", self.abrir)
-
-		toolbutton3 = gtk.ToolButton(gtk.STOCK_SAVE)
-		toolbutton3.set_tooltip_text("Guardar")
-		toolbutton3.connect("clicked", self.guardar)
-
-		toolbutton4 = gtk.ToolButton(gtk.STOCK_EXECUTE)
-		toolbutton4.set_tooltip_text("Ejecutar")
-		toolbutton4.connect("clicked", self.compile)
-
-		toolbar.add(toolbutton1)
-		toolbar.add(toolbutton2)
-		toolbar.add(toolbutton3)
-		toolbar.add(toolbutton4)
-		
-#		handle.ser_property("expand", True)
+		toolbutton = gtk.ToolButton(gtk.STOCK_NEW)
+		toolbutton.set_tooltip_text("Nuevo")
+		toolbutton.connect("clicked", self.nuevo)
+		toolbar.add(toolbutton)
+		toolbutton = gtk.ToolButton(gtk.STOCK_OPEN)
+		toolbutton.set_tooltip_text("Abrir")
+		toolbutton.connect("clicked", self.abrir)
+		toolbar.add(toolbutton)
+		toolbutton = gtk.ToolButton(gtk.STOCK_SAVE)
+		toolbutton.set_tooltip_text("Guardar")
+		toolbutton.connect("clicked", self.guardar)
+		toolbar.add(toolbutton)
+		toolbutton = gtk.ToolButton(gtk.STOCK_EXECUTE)
+		toolbutton.set_tooltip_text("Ejecutar")
+		toolbutton.connect("clicked", self.compile)
+		toolbar.add(toolbutton)
 		handle.add(toolbar)
 
 		return handle
 
 	def table(self):
-		self.table = gtk.Table(4, 2)
-		
+		self.table = gtk.Table(5, 2)
 		self.window.add(self.table)
-
-	def key_press_event_cb(self, widget, event):
-		from gtk.gdk import CONTROL_MASK
-		if event.state & CONTROL_MASK:
-			from gtk.gdk import keyval_name
-			if keyval_name(event.keyval) == "n":
-				self.nuevo()
-				return True
-			if keyval_name(event.keyval) == "o":
-				self.abrir()
-				return True
-			elif keyval_name(event.keyval) == "s":
-				self.guardar()
-				return True
-			elif keyval_name(event.keyval) == "b":
-				self.compile()
-				return True
-			elif keyval_name(event.keyval) == "q":
-				self.quit()
-				return True
-			elif keyval_name(event.keyval) == "i":
-				self.interactive()
-				return True
-
-				
-			return False
 
 	def main(self):
 		self.create_main_window()
 		self.table()
 
-		self.window.connect("key-press-event",self.key_press_event_cb)
-
+		#self.window.connect("key-press-event",self.key_press_event_cb)
+		self.status = gtk.Statusbar()
 		self.toolbar = self.crear_toolbar()
-
-		self.menus = self.create_menus()
-
+		self.menus = self.factory_menus()
 		self.editor = self.create_editor()
 		self.teminal = self.create_console()
 
@@ -332,16 +421,22 @@ class Window():
 
 		scrwdw.add(self.terminal)
 		frame.add(scrwdw)
-		frame.set_size_request(-1,200)
-		
+		frame.set_size_request(-1,int(self.h/3))
+		frame.set_border_width(5)
 
-		self.table.attach(self.menus,0,2,0,1)
-		self.table.attach(self.toolbar,0,2,1,2)
-		self.table.attach(self.editor,0,2,2,3)
-		self.table.attach(frame,0,2,3,4)
+		self.table.attach(self.menus,0,2,0,1, gtk.SHRINK, gtk.SHRINK)
+		self.table.attach(self.toolbar,0,2,1,2, gtk.FILL|gtk.SHRINK|gtk.EXPAND, gtk.SHRINK)
 
+		self.table.set_row_spacing(1, 10)
+
+		self.table.attach(self.editor,0,2,2,3, gtk.FILL|gtk.SHRINK|gtk.EXPAND, gtk.FILL|gtk.EXPAND)
+		self.table.attach(frame,0,2,3,4, gtk.FILL|gtk.SHRINK|gtk.EXPAND, gtk.FILL|gtk.EXPAND)
+		self.table.attach(self.status,0,2,4,5, gtk.FILL|gtk.SHRINK|gtk.EXPAND, gtk.SHRINK)
+		self.get_defaults()
 		self.window.show_all()
 		gtk.main()
+
+		self.textview.grab_focus()
 
 s = Window()
 s.main()
