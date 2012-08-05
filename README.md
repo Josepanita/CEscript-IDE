@@ -11,7 +11,7 @@ Lenguaje **C** Interpretado, Basado en el proyecto [PicoC] de Zik Saleeba, esta 
 
 Por ahora solo esta disponible para entornos GNU/Linux, simplemente ejecuta el script ***install.sh***
 
-Debes tener la posibilidad de ejecutar el script como Root, o el uso del comando **sudo** para poder proveer permisos de administrador al instalador de paquetes.
+Debes tener la posibilidad de ejecutar el script como **_root_**, o el uso del comando **sudo** para poder proveer permisos de administrador al instalador de paquetes.
 
 Hasta ahora solo hay soporte para
 
@@ -19,7 +19,7 @@ Hasta ahora solo hay soporte para
   - **aptitude** Versiones anteriores de DEBian
   - **yum** de Fedora
 
-##Usando esta herramienta
+## Usando esta herramienta
 
 Luego de la instalación, se creará una carpeta en tu directorio **$HOME** (**/home/*&lt;usuario&gt;*/**) llamado **cescript-ide** 
 
